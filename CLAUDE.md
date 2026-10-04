@@ -6,4 +6,4 @@
 - Tests: pytest. Run them after every change and show me the output.
 - Fictional data only. Never generate real names, emails or Monash Health identifiers.
 - This is a learning project: when I ask how something works, teach; don't just do it.
-- Stay in plan or manual permission mode unless I say otherwise.
+- Stay in plan or manual permission mode unless I say otherwise
