@@ -456,7 +456,7 @@ Each team runs its own copy of the app, which starts blank. The team defines its
 ### Decisions
 
 - **One copy per team.** One install serves one team, with its own database and settings. No multi-team data model.
-- **Shift times belong to roles.** Shifts are named periods (Day, Late, Night). Each role works a period at its own times, and a role with no times for a period never works it.
+- **Shift times belong to periods, with overrides per stream or role.** Shifts are named periods (Day, Late, Night). Each period has default times for the team. A stream can override them (SSU runs 07:30–17:30 while the rest of the day shift runs 08:00–18:00), a role can override them (interns finishing early), and a stream-and-role pair overrides both. The most specific setting wins. A stream or role switched off for a period never works it.
 
 Example (fictional):
 
@@ -480,9 +480,13 @@ Option B is a bigger refactor and the better long-term model.
 | Entity | Fields | Notes |
 | --- | --- | --- |
 | `Period` (replaces `ShiftType`) | name, category (day / evening / night), colour, sort order | What the template, views and rules refer to |
-| `RoleShift` (new) | role, period, start time, duration, active | One row per role per period; no row means the role doesn't work that period |
+| `ShiftTimes` (new) | period, stream (optional), role (optional), start time, duration, active | One row per period with stream and role blank is the team default; rows with a stream, a role, or both are overrides, and the most specific row wins. An override with `active` off means that stream or role doesn't work that period |
 | `CoverageRequirement` | period instead of shift type | Stream, role, day class, minimum and maximum unchanged |
 | `Assignment` | period and role, **plus a copy of the start time and duration** | The copy keeps a published roster unchanged if a role's times are edited later |
+
+The same settings hold stream overrides. Example: Day defaults to 08:00–18:00 for every role; one row "SSU · Day · 07:30–17:30" moves everyone on SSU earlier without touching the other streams.
+
+A fuller example of the kind of team this has to express, with fictional names and nothing team-identifying: Day defaults 08:00–18:00, SSU 07:30–17:30, a weekday-only morning AVAO; Late defaults 14:30–24:00, consultants 15:00–24:00, SSU resident 14:30–23:30, no SSU consultant; Night 23:00–09:00 with consultants and interns switched off, two registrars (one holding In charge), three HMOs and one SSU HMO. Every count in that list is a template cell an admin can raise or lower.
 
 ### Minimum staffing: role groups
 
@@ -492,7 +496,7 @@ The team template already lets an admin set, per shift × stream × weekday/week
 - **A template row names either a role or a role group.** The minimum is met by anyone holding any role in the group. The grid editor shows groups as extra columns after the roles.
 - **Everything else stays as it is.** Coverage checks, the solver's fill step, gap flags and the manual-override candidate list all treat a group row as "one position, several eligible roles". Someone who holds two roles (In charge and Consultant) still fills only one position per shift.
 - **Resolution order in the solver:** fill single-role rows first, then group rows with whoever is left. This stops the only consultant on duty being used for a "middle grade" slot while a registrar sits idle.
-- **Rule reuse.** A role group is the same object a supervision rule needs ("Intern requires a *Senior decision-maker* on the same stream and period"), so build groups once in week 3 and reuse them in week 18.
+- **Rule reuse.** A role group is the same object a supervision rule needs ("Intern requires a *Senior decision-maker* on the same stream and period"), so build groups once in week 3 and reuse them in week 18. The supervisor's stream is part of the rule: same stream by default, or a named one for teams where a senior on one stream covers a junior on another.
 
 **Acceptance tests**
 
@@ -504,10 +508,10 @@ The team template already lets an admin set, per shift × stream × weekday/week
 
 ### Behaviour changes
 
-- **Team template editor:** only shows role × period cells that have times. Most teams share one set of times, so the role-times grid has an "apply to all roles" shortcut, and different times per role are the exception.
+- **Team template editor:** only shows stream × role × period cells that have times. Most teams share one set of times per period, so the times page starts with the period defaults and offers "override for a stream" and "override for a role" as the exceptions.
 - **Solver:** only creates options where the role has times for that period. Hours and rest gaps come from each assignment's own times; the rest check pairs the actual times, not the period names.
 - **Rule checker:** the same, reading the copied times on each assignment.
-- **Views:** rows grouped by period. A role's times show in its row label, such as "Registrar 22:00–08:30".
+- **Views:** rows grouped by period, so everyone on the day shift sits in one band whatever their start time. The band header shows the period name and its default times; a row whose times differ shows them in its label, such as "SSU Consultant 07:30–17:30" or "Registrar 22:00–08:30".
 - **Manual override:** offering a role a period it has no times for shows ⛔.
 - **Editing a role's times:** changes unpublished assignments only. Before saving, show the admin how many future shifts will move.
 
@@ -542,7 +546,7 @@ Run it on a copy of the database first, and write a downgrade.
 | Week | Add |
 | --- | --- |
 | 3 (pass 1) | Model `Period` and `RoleShift` from the start, instead of shared shift types |
-| 4 (pass 1) | The role-times grid editor with "apply to all roles"; the terms setting |
+| 4 (pass 1) | The shift-times page: period defaults with stream and role overrides; the terms setting |
 | 8–9 (pass 1) | Solver and checker use per-role times and rest pairs |
 | 11 (pass 1) | Deploy a second copy ("HITH") on the same server through Caddy: same image, different config |
 | 20 (pass 2) | Config export and import, starter configs, the first-run setup checklist |
@@ -780,7 +784,7 @@ All 24 of your requirements are now covered in the plan or the specs. The review
 - **Week 0 pushed to GitHub before any commit,** which fails. A commit step is added, and the `.gitignore` lines now come before the first commit.
 - **The second spec overstated what's already built.** It now says none of the eleven is fully met, eight are partly there and two are new.
 - **Two importance scales didn't line up.** *Would like*, *important* and *essential* now map to low, medium and high priority.
-- **Per-role times would have forced every team to enter times for each role.** An "apply to all roles" shortcut keeps shared times the default.
+- **Per-role times alone would have been wrong for a team whose times differ by stream** (SSU starts at 07:30, the rest of the day shift at 08:00). Period defaults with stream and role overrides cover both cases, and a team with one set of times enters it once.
 - **The plan's length was understated.** The intro now says the specs add three to four weeks.
 
 ### Gaps that need a decision
@@ -813,7 +817,7 @@ A second pass over the whole doc, checking it as a plan you'll actually follow r
 
 - **Audit who changed EFT.** Since admins control EFT and it drives everyone's targets, every EFT change should be audited with the old value, new value, effective date and who made it. Add it to the acceptance tests.
 - **Preference budget by EFT?** A 0.5 EFT person has half the shifts, so three high-priority preferences carry twice the weight. Either scale the budget by EFT or state deliberately that you don't. Pick one and write it down.
-- **Supervision is a template rule, not a people rule.** The simplest reliable form: a stream–period template row can require that another role is also present in the same stream ("Intern requires Registrar or Consultant on Silver, same period"). That's a coverage constraint the solver already understands.
+- **Supervision is a template rule, not a people rule.** The simplest reliable form: a stream–period template row can require that another role is also present, in the same stream or in a named one ("Intern requires Registrar or Consultant on Silver, same period"). That's a coverage constraint the solver already understands. Where supervision is handled operationally rather than on the roster, leave the rule out.
 - **Soft-lock before publication.** Add two dates per roster run: a request cut-off (no new preferences for that period) and a publish date. Between them, admins review the draft. After publication, changes go through swaps, leave or admin override only.
 - **Re-rostering mode is worth bringing forward.** Once sick leave on the fly exists (week 13), a full re-solve that moves dozens of published shifts will be unusable. The minimum-changes solve mode in week 20 should move to week 17 alongside the solver work. The pass 2 table is updated.
 
