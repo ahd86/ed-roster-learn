@@ -1,1 +1,1 @@
-- Week 1 done: skeleton, CI, protected main
+# Learnings — version A
