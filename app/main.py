@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 
+from app.roster import shifts  # noqa: F401
+
 app = FastAPI()
 
 
