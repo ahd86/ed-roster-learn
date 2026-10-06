@@ -1,1 +1,1 @@
-# Learnings — version B
+# Learnings — version A
